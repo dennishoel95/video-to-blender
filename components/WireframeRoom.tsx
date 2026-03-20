@@ -26,8 +26,8 @@ function Room() {
   useFrame((_, delta) => {
     if (!groupRef.current) return;
 
-    const maxTilt = 0.14;
-    const lerpSpeed = 3;
+    const maxTilt = 0.22;
+    const lerpSpeed = 8;
 
     const targetX = isTouchDevice.current ? 0 : -mouseRef.current.y * maxTilt;
     const targetY = isTouchDevice.current ? 0 : mouseRef.current.x * maxTilt;

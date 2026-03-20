@@ -58,7 +58,7 @@ const DETAIL_LEVEL_HINTS: Record<DetailLevel, string> = {
 
 const BLENDER_VERSION_HINTS: Record<BlenderVersion, string> = {
   3: "Generate script compatible with Blender 3.x (Python bpy API).",
-  4: "Generate script compatible with Blender 4.x (Python bpy API). Use updated API calls where the API changed between 3.x and 4.x.",
+  4: "Generate script compatible with Blender 4.x (Python bpy API). IMPORTANT: In Blender 4.0+, do NOT call .clear() on ShaderNodeTree — use mat.node_tree.nodes.clear() instead if you need to clear nodes. Do NOT use node_tree.clear(). Prefer creating simple materials without manipulating shader nodes when possible.",
 };
 
 export function buildSystemPrompt(
