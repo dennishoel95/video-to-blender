@@ -14,7 +14,6 @@ async function getFFmpeg(onProgress?: (msg: string) => void): Promise<FFmpeg> {
   await ffmpeg.load({
     coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
     wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
-    workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, "text/javascript"),
   });
 
   return ffmpeg;
@@ -34,7 +33,7 @@ export async function extractFrames(
 
   // Get video duration
   let duration = 0;
-  ff.on("log", ({ message }) => {
+  const logHandler = ({ message }: { message: string }) => {
     const match = message.match(/Duration:\s*(\d+):(\d+):(\d+)\.(\d+)/);
     if (match) {
       duration =
@@ -43,10 +42,12 @@ export async function extractFrames(
         parseInt(match[3]) +
         parseInt(match[4]) / 100;
     }
-  });
+  };
+  ff.on("log", logHandler);
 
   // Probe duration with a quick pass
   await ff.exec(["-i", inputName, "-f", "null", "-t", "0.001", "/dev/null"]);
+  ff.off("log", logHandler);
 
   if (duration <= 0) {
     // Fallback: try to extract without duration knowledge

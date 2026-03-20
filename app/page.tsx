@@ -113,8 +113,6 @@ export default function Home() {
     }
   }, [state, generateScript]);
 
-  const isProcessing = state.step === "extracting" || state.step === "generating";
-
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
       <ThemeToggle />
@@ -124,7 +122,7 @@ export default function Home() {
           <h1 className="text-2xl font-bold tracking-tight">
             VIDEO → BLENDER
           </h1>
-          <p className="text-zinc-500 dark:text-zinc-500 text-sm mt-1">
+          <p className="text-zinc-600 dark:text-zinc-500 text-sm mt-1">
             Upload architectural footage, get a Blender Python script
           </p>
         </div>
