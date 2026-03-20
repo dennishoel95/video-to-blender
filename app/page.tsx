@@ -1,65 +1,203 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useCallback } from "react";
+import { VideoUploader } from "@/components/VideoUploader";
+import { SettingsBar } from "@/components/SettingsBar";
+import { FramePreview } from "@/components/FramePreview";
+import { ScriptOutput } from "@/components/ScriptOutput";
+import { ErrorBanner } from "@/components/ErrorBanner";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { extractFrames } from "@/lib/extractFrames";
+import { stripFences } from "@/lib/stripFences";
+import {
+  DEFAULT_FRAME_COUNT,
+  DEFAULT_RESOLUTION,
+  RESOLUTION_MAP,
+  type Resolution,
+} from "@/lib/constants";
+
+type AppState =
+  | { step: "upload"; file: File | null }
+  | { step: "extracting"; file: File; progress: string; frames: string[] }
+  | { step: "generating"; frames: string[]; script: string }
+  | { step: "done"; frames: string[]; script: string }
+  | { step: "error"; frames: string[]; script: string; error: string };
 
 export default function Home() {
+  const [state, setState] = useState<AppState>({ step: "upload", file: null });
+  const [frameCount, setFrameCount] = useState(DEFAULT_FRAME_COUNT);
+  const [resolution, setResolution] = useState<Resolution>(DEFAULT_RESOLUTION);
+
+  const reset = useCallback(() => {
+    setState({ step: "upload", file: null });
+  }, []);
+
+  const generateScript = useCallback(async (frames: string[]) => {
+    setState({ step: "generating", frames, script: "" });
+
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ frames }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`API error: ${res.status} ${res.statusText}`);
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No response stream");
+
+      const decoder = new TextDecoder();
+      let script = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        script += decoder.decode(value, { stream: true });
+        setState((prev) => {
+          if (prev.step === "generating" || prev.step === "done") {
+            return { step: "generating", frames: prev.frames, script: stripFences(script) };
+          }
+          return prev;
+        });
+      }
+
+      setState({ step: "done", frames, script: stripFences(script) });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "An unexpected error occurred";
+      setState((prev) => ({
+        step: "error",
+        frames,
+        script: "script" in prev ? prev.script : "",
+        error: message,
+      }));
+    }
+  }, []);
+
+  const handleGenerate = useCallback(async () => {
+    if (state.step !== "upload" || !state.file) return;
+
+    const file = state.file;
+    setState({ step: "extracting", file, progress: "Starting...", frames: [] });
+
+    try {
+      const frames = await extractFrames(
+        file,
+        frameCount,
+        RESOLUTION_MAP[resolution],
+        (progress) => {
+          setState((prev) => {
+            if (prev.step === "extracting") {
+              return { ...prev, progress };
+            }
+            return prev;
+          });
+        }
+      );
+
+      // Update with all frames before transitioning
+      setState({ step: "extracting", file, progress: "Sending to AI...", frames });
+
+      await generateScript(frames);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Frame extraction failed";
+      setState({ step: "error", frames: [], script: "", error: message });
+    }
+  }, [state, frameCount, resolution, generateScript]);
+
+  const handleRetry = useCallback(() => {
+    if (state.step === "error" && state.frames.length > 0) {
+      generateScript(state.frames);
+    }
+  }, [state, generateScript]);
+
+  const isProcessing = state.step === "extracting" || state.step === "generating";
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <main className="min-h-screen flex items-center justify-center p-6">
+      <ThemeToggle />
+      <div className="w-full max-w-2xl space-y-6">
+        {/* Header */}
+        <div className="text-center">
+          <h1 className="text-2xl font-bold tracking-tight">
+            VIDEO → BLENDER
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-zinc-500 dark:text-zinc-500 text-sm mt-1">
+            Upload architectural footage, get a Blender Python script
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+
+        {/* Upload state */}
+        {state.step === "upload" && (
+          <>
+            <VideoUploader
+              onFileSelect={(file) => setState({ step: "upload", file })}
+              disabled={false}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+
+            {state.file && (
+              <div className="text-sm text-zinc-400">
+                Selected: {state.file.name} ({(state.file.size / 1024 / 1024).toFixed(1)}MB)
+              </div>
+            )}
+
+            <SettingsBar
+              frameCount={frameCount}
+              resolution={resolution}
+              onFrameCountChange={setFrameCount}
+              onResolutionChange={setResolution}
+            />
+
+            {state.file && (
+              <button
+                onClick={handleGenerate}
+                className="w-full py-3 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-semibold transition-colors"
+              >
+                Generate Blender Script
+              </button>
+            )}
+          </>
+        )}
+
+        {/* Extracting state */}
+        {state.step === "extracting" && (
+          <>
+            <div className="text-sm text-zinc-400">{state.progress}</div>
+            <FramePreview frames={state.frames} totalCount={frameCount} />
+          </>
+        )}
+
+        {/* Generating / Done state */}
+        {(state.step === "generating" || state.step === "done") && (
+          <>
+            <FramePreview frames={state.frames} totalCount={state.frames.length} />
+            <ScriptOutput
+              script={state.script}
+              isStreaming={state.step === "generating"}
+              onReset={reset}
+            />
+          </>
+        )}
+
+        {/* Error state */}
+        {state.step === "error" && (
+          <>
+            {state.frames.length > 0 && (
+              <FramePreview frames={state.frames} totalCount={state.frames.length} />
+            )}
+            {state.script && (
+              <ScriptOutput script={state.script} isStreaming={false} onReset={reset} />
+            )}
+            <ErrorBanner
+              message={state.error}
+              onRetry={handleRetry}
+              onReset={reset}
+            />
+          </>
+        )}
+      </div>
+    </main>
   );
 }
