@@ -67,7 +67,8 @@ video-to-blender/
 │   ├── SettingsBar.tsx         # Frame count slider + resolution segmented control
 │   ├── FramePreview.tsx        # Thumbnail strip during extraction
 │   ├── ScriptOutput.tsx        # Streaming code display + copy/download
-│   └── ErrorBanner.tsx         # Error display with Retry + Start Over
+│   ├── ErrorBanner.tsx         # Error display with Retry + Start Over
+│   └── ThemeToggle.tsx        # Light/dark theme toggle with localStorage
 ├── lib/
 │   ├── extractFrames.ts        # ffmpeg.wasm frame extraction
 │   ├── stripFences.ts          # Markdown fence stripping utility
