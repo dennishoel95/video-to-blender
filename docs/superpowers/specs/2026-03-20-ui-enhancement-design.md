@@ -29,10 +29,13 @@ A low-poly wireframe room rendered with React Three Fiber. Abstract architectura
 
 - New dependency: `three`, `@react-three/fiber`, `@react-three/drei`
 - Component: `components/WireframeRoom.tsx`
-- Uses `useFrame` for animation loop, `useThree` for pointer tracking
+- Uses `useFrame` for animation loop
+- Cursor tracking uses `window.addEventListener('mousemove')` with coordinates normalized to viewport size (not `useThree().pointer`, which only tracks within the tiny canvas bounds). Store normalized mouse position in a ref, lerp toward it in `useFrame`.
 - Canvas size: ~90×75px on desktop, ~80×65px on mobile
 - Transparent background (no canvas background color)
 - Room geometry: built with `<lineSegments>` or `<Line>` from drei for clean wireframe edges
+- **SSR**: Must use `next/dynamic` with `{ ssr: false }` when importing into `page.tsx` — R3F requires browser APIs (WebGL).
+- **Fallback**: If Canvas fails to mount, the container should collapse gracefully (no error UI needed since this is decorative).
 
 ## Layout Changes
 
@@ -102,10 +105,10 @@ Adjusts generated bpy API calls for compatibility.
 
 | Value | Label | Prompt modifier |
 |-------|-------|-----------------|
-| `3` | 3.x | "Generate script compatible with Blender 3.x (Python bpy API)." |
-| `4` | 4.x | "Generate script compatible with Blender 4.x (Python bpy API). Use updated API calls where the API changed between 3.x and 4.x." |
+| `3` | 3.x | 3.x | "Generate script compatible with Blender 3.x (Python bpy API)." |
+| `4` | 4.x | 4.x | "Generate script compatible with Blender 4.x (Python bpy API). Use updated API calls where the API changed between 3.x and 4.x." |
 
-Default: `4`
+Default: `4`. Labels are short enough — no abbreviation needed on mobile.
 
 ### Settings Layout
 
@@ -146,15 +149,26 @@ export function buildSystemPrompt(
 ): string
 ```
 
-The base prompt remains the same. The room scale hint, detail level modifier, and Blender version note are appended as additional rules.
+The base prompt remains the same. The room scale hint, detail level modifier, and Blender version note are appended as additional rules. The static `SYSTEM_PROMPT` export is removed and replaced by this function. Update `route.ts` import accordingly.
+
+### User Prompt
+
+`USER_PROMPT_TEMPLATE` also becomes dynamic — it must respect the `detailLevel` parameter. When `detailLevel` is `walls`, the user prompt should not mention "doors, windows." Replace the current hardcoded structural list with a dynamic version:
+
+```ts
+export function buildUserPrompt(n: number, detailLevel: DetailLevel): string
+```
+
+- `walls`: "Identify the room structure: walls, floor, and ceiling."
+- `openings`: "Identify the room structure: walls, floor, ceiling, doors, and windows."
+- `full`: "Identify the room structure: walls, floor, ceiling, doors, windows, and major structural elements."
 
 ### Server-side Validation
 
-The API route validates the new fields:
-- `roomScale` must be one of `small`, `medium`, `large`
-- `detailLevel` must be one of `walls`, `openings`, `full`
-- `blenderVersion` must be `3` or `4`
-- Invalid values fall back to defaults (don't reject the request)
+The API route validates the new fields with fallback to defaults (don't reject):
+- `roomScale`: must be one of `small`, `medium`, `large` — validate with `ROOM_SCALES.includes(value)`
+- `detailLevel`: must be one of `walls`, `openings`, `full` — validate with `DETAIL_LEVELS.includes(value)`
+- `blenderVersion`: must be an integer `3` or `4` — validate with `Number.isInteger(value) && BLENDER_VERSIONS.includes(value)`. A string `"4"` is not coerced; it falls back to default.
 
 ## Constants Updates
 
@@ -178,18 +192,19 @@ export const DEFAULT_BLENDER_VERSION: BlenderVersion = 4;
 
 ### New: `components/WireframeRoom.tsx`
 
-R3F canvas with wireframe room geometry. Accepts no props — purely decorative. Handles its own cursor tracking internally via `useThree` pointer state.
+R3F canvas with wireframe room geometry. Accepts no props — purely decorative. Handles its own cursor tracking via window-level mousemove listener. Must be imported with `next/dynamic` and `{ ssr: false }` in page.tsx.
 
 ### Modified: `components/SettingsBar.tsx`
 
-Add new props for roomScale, detailLevel, blenderVersion with their change handlers. Render the two new rows of segmented controls. Use abbreviated labels on mobile via responsive classes (`hidden sm:inline` / `sm:hidden`).
+Add new props for roomScale, detailLevel, blenderVersion with their change handlers. The outer container becomes `flex flex-col gap-3` to stack the three rows. Each row is a child flex div. Render the two new rows of segmented controls. Use abbreviated labels on mobile via responsive classes (`hidden sm:inline` / `sm:hidden`).
 
 ### Modified: `app/page.tsx`
 
 - New state variables for roomScale, detailLevel, blenderVersion with defaults
 - Pass new params to SettingsBar
 - Include new params in the POST body to `/api/generate`
-- Hero section restructured: WireframeRoom + title in a flex row
+- `generateScript`'s `useCallback` dependency array must include `roomScale`, `detailLevel`, `blenderVersion` so retry uses current values (not stale closure captures)
+- Hero section restructured: WireframeRoom (dynamic import, ssr: false) + title in a flex row
 - Container narrowed to max-w-lg
 
 ### Modified: `app/api/generate/route.ts`
@@ -201,7 +216,8 @@ Add new props for roomScale, detailLevel, blenderVersion with their change handl
 ### Modified: `lib/constants.ts`
 
 - Add new types, constants, defaults
-- Replace static `SYSTEM_PROMPT` with `buildSystemPrompt()` function
+- Remove static `SYSTEM_PROMPT` export, replace with `buildSystemPrompt()` function
+- Remove static `USER_PROMPT_TEMPLATE` export, replace with `buildUserPrompt()` function
 - Add prompt hint strings for each parameter value
 
 ## Responsive Breakpoints
