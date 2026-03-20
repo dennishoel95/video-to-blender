@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { VideoUploader } from "@/components/VideoUploader";
 import { SettingsBar } from "@/components/SettingsBar";
 import { FramePreview } from "@/components/FramePreview";
@@ -12,9 +13,20 @@ import { stripFences } from "@/lib/stripFences";
 import {
   DEFAULT_FRAME_COUNT,
   DEFAULT_RESOLUTION,
+  DEFAULT_ROOM_SCALE,
+  DEFAULT_DETAIL_LEVEL,
+  DEFAULT_BLENDER_VERSION,
   RESOLUTION_MAP,
   type Resolution,
+  type RoomScale,
+  type DetailLevel,
+  type BlenderVersion,
 } from "@/lib/constants";
+
+const WireframeRoom = dynamic(
+  () => import("@/components/WireframeRoom").then((mod) => mod.WireframeRoom),
+  { ssr: false }
+);
 
 type AppState =
   | { step: "upload"; file: File | null }
@@ -27,6 +39,9 @@ export default function Home() {
   const [state, setState] = useState<AppState>({ step: "upload", file: null });
   const [frameCount, setFrameCount] = useState(DEFAULT_FRAME_COUNT);
   const [resolution, setResolution] = useState<Resolution>(DEFAULT_RESOLUTION);
+  const [roomScale, setRoomScale] = useState<RoomScale>(DEFAULT_ROOM_SCALE);
+  const [detailLevel, setDetailLevel] = useState<DetailLevel>(DEFAULT_DETAIL_LEVEL);
+  const [blenderVersion, setBlenderVersion] = useState<BlenderVersion>(DEFAULT_BLENDER_VERSION);
 
   const reset = useCallback(() => {
     setState({ step: "upload", file: null });
@@ -39,7 +54,7 @@ export default function Home() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ frames }),
+        body: JSON.stringify({ frames, roomScale, detailLevel, blenderVersion }),
       });
 
       if (!res.ok) {
@@ -74,7 +89,7 @@ export default function Home() {
         error: message,
       }));
     }
-  }, []);
+  }, [roomScale, detailLevel, blenderVersion]);
 
   const handleGenerate = useCallback(async () => {
     if (state.step !== "upload" || !state.file) return;
@@ -97,7 +112,6 @@ export default function Home() {
         }
       );
 
-      // Update with all frames before transitioning
       setState({ step: "extracting", file, progress: "Sending to AI...", frames });
 
       await generateScript(frames);
@@ -116,15 +130,18 @@ export default function Home() {
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
       <ThemeToggle />
-      <div className="w-full max-w-2xl space-y-6">
-        {/* Header */}
-        <div className="text-center">
-          <h1 className="text-2xl font-bold tracking-tight">
-            VIDEO → BLENDER
-          </h1>
-          <p className="text-zinc-600 dark:text-zinc-500 text-sm mt-1">
-            Upload architectural footage, get a Blender Python script
-          </p>
+      <div className="w-full max-w-lg space-y-6">
+        {/* Hero: 3D room + title */}
+        <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-center sm:gap-6">
+          <WireframeRoom />
+          <div className="text-center sm:text-left">
+            <h1 className="text-2xl font-bold tracking-tight">
+              VIDEO → BLENDER
+            </h1>
+            <p className="text-zinc-600 dark:text-zinc-500 text-sm mt-1">
+              Walkthrough video in, Blender scene out. Seconds.
+            </p>
+          </div>
         </div>
 
         {/* Upload state */}
@@ -144,8 +161,14 @@ export default function Home() {
             <SettingsBar
               frameCount={frameCount}
               resolution={resolution}
+              roomScale={roomScale}
+              detailLevel={detailLevel}
+              blenderVersion={blenderVersion}
               onFrameCountChange={setFrameCount}
               onResolutionChange={setResolution}
+              onRoomScaleChange={setRoomScale}
+              onDetailLevelChange={setDetailLevel}
+              onBlenderVersionChange={setBlenderVersion}
             />
 
             {state.file && (
